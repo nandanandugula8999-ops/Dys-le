@@ -58,6 +58,36 @@ document.addEventListener("DOMContentLoaded", () => {
     let selectedFiles = [];
     let currentResult = null;
 
+    // Backend API base: same-origin by default (Flask dev).
+    // On static hosts (Netlify) set via ?backend=https://<host> (saved)
+    // or window.BACKEND_URL / localStorage "dyslexia_backend".
+    try {
+        const q = new URLSearchParams(window.location.search).get("backend");
+        if (q) localStorage.setItem("dyslexia_backend", q.replace(/\/$/, ""));
+    } catch (e) { /* ignore */ }
+    const API_BASE = ((window.BACKEND_URL || "").trim()
+        || (function () { try { return localStorage.getItem("dyslexia_backend") || ""; } catch (e) { return ""; } })()
+    ).replace(/\/$/, "");
+    const api = (p) => `${API_BASE}${p}`;
+    async function apiJson(res) {
+        const ct = res.headers.get("content-type") || "";
+        if (!res.ok) {
+            const txt = await res.text().catch(() => "");
+            if (!API_BASE && res.status === 404 && txt.includes("<!DOCTYPE")) {
+                throw new Error("AI backend not found on this static site. Host server_cnn_only.py (Render/Railway) and open this page with ?backend=https://your-backend, e.g. " + window.location.pathname + "?backend=https://your-backend");
+            }
+            throw new Error(`Server error ${res.status}: ${txt.slice(0, 120)}`);
+        }
+        if (!ct.includes("application/json")) {
+            const txt = await res.text().catch(() => "");
+            if (txt.trim().startsWith("<!DOCTYPE") || txt.trim().startsWith("<html")) {
+                throw new Error("Got an HTML page instead of AI results. This static copy has no /api backend. Run the Flask server locally or set ?backend=https://your-backend.");
+            }
+            throw new Error("Unexpected server response (not JSON).");
+        }
+        return res.json();
+    }
+
     // Color definitions
     const COLOR_MAP = {
         "Reversal": { bg: "#dc3545", color: "#ffffff", chip: "#ef4444" },
@@ -145,8 +175,8 @@ document.addEventListener("DOMContentLoaded", () => {
             triggerLoading(true, "Fetching benchmark sample & computing consensus...");
 
             try {
-                const response = await fetch(`/api/demo?type=${demoType}`);
-                const data = await response.json();
+                const response = await fetch(api(`/api/demo?type=${demoType}`));
+                const data = await apiJson(response);
                 if (data.error) {
                     throw new Error(data.error);
                 }
@@ -170,12 +200,12 @@ document.addEventListener("DOMContentLoaded", () => {
         triggerLoading(true, `Analyzing ${selectedFiles.length} handwriting image${selectedFiles.length > 1 ? "s" : ""} & averaging results...`);
 
         try {
-            const response = await fetch("/api/predict", {
+            const response = await fetch(api("/api/predict"), {
                 method: "POST",
                 body: formData
             });
 
-            const data = await response.json();
+            const data = await apiJson(response);
             if (data.error) {
                 throw new Error(data.error);
             }
@@ -304,8 +334,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (gradcamCaption) gradcamCaption.textContent = "Computing Grad-CAM...";
                 const fd = new FormData();
                 fd.append("image", selectedFiles[0]);
-                fetch("/api/gradcam", { method: "POST", body: fd })
-                    .then((r) => r.json())
+                fetch(api("/api/gradcam"), { method: "POST", body: fd })
+                    .then((r) => apiJson(r))
                     .then((g) => {
                         if (g.gradcam_base64 && gradcamImg) {
                             gradcamImg.src = g.gradcam_base64;
