@@ -102,7 +102,9 @@ def attach_comparison(batch_result: Dict) -> Dict:
     return batch_result
 
 # Initialize Flask App
-app = Flask(__name__, template_folder="templates", static_folder="static")
+# All web assets live in frontend/ (index.html + css/ + js/ + images/).
+# static_url_path="/static" keeps public URLs (/static/js/main.js) unchanged.
+app = Flask(__name__, template_folder="frontend", static_folder="frontend", static_url_path="/static")
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB max upload
 
 # Initialize Hybrid AI Detector (backbone selectable via DYSLEXIA_BACKBONE env)

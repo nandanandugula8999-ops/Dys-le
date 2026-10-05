@@ -69,12 +69,11 @@ Dyslexia_Project/
 │   ├── train_ml_classifiers.py     # SVM & Random Forest training & persistence
 │   ├── evaluate.py                 # Evaluation metrics & visualization generators
 │   └── hybrid_pipeline.py          # Unified hybrid inference engine & batch averaging
-├── static/                         # Static web assets
+├── frontend/                       # All web assets in one place
+│   ├── index.html                  # Semantic HTML5 frontend interface
 │   ├── css/style.css               # Dedicated CSS styling (cards, animations, badges)
 │   ├── js/main.js                  # Frontend JS (drag-drop, previews, API fetch, reports)
 │   └── images/                     # Web charts and confusion matrix graphics
-├── templates/                      # HTML templates
-│   └── index.html                  # Semantic HTML5 frontend interface
 ├── server.py                       # Flask REST server connecting HTML to Hybrid AI
 ├── run_html_webapp.bat             # 1-click launcher for HTML+CSS+JS web application
 ├── run_streamlit_app.bat          # 1-click launcher for Streamlit dashboard
