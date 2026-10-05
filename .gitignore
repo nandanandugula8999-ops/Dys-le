@@ -1,0 +1,28 @@
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.log
+
+# Large Handwriting Dataset (208,000+ files - download via dataset link)
+dataset/
+*.zip
+*.rar
+
+# Virtual environments
+venv/
+env/
+.env/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints*/
+
+# Editor & IDE artifacts
+.vscode/
+.idea/
+*.swp
+
+# OS generated files
+Thumbs.db
+Desktop.ini
+.DS_Store

@@ -1,0 +1,3 @@
+"""
+Dyslexia Detection Application Package.
+"""

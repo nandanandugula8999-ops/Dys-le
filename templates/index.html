@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeuroScan AI | Hybrid Dyslexia Handwriting Screening</title>
+    <!-- Google Fonts & Font Awesome Icons -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Dedicated CSS Stylesheet -->
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <!-- Top Navigation Header -->
+    <header class="navbar">
+        <div class="nav-container">
+            <div class="logo">
+                <i class="fa-solid fa-brain-circuit"></i>
+                <div class="logo-text">
+                    <span class="logo-title">NeuroScan <span>AI</span></span>
+                    <span class="logo-subtitle">Dyslexia Handwriting Screening Portal</span>
+                </div>
+            </div>
+            <div class="nav-badges">
+                <span class="status-pill active" title="Trained on full dataset"><i class="fa-solid fa-circle-check"></i> CNN Backbone (98.8%)</span>
+                <span class="status-pill active" title="RBF Kernel Margin Optimization"><i class="fa-solid fa-circle-check"></i> SVM Classifier</span>
+                <span class="status-pill active" title="150 Decision Trees"><i class="fa-solid fa-circle-check"></i> Random Forest</span>
+                <span class="status-pill highlight" title="Full 56,723 Test Benchmark"><i class="fa-solid fa-award"></i> 88.67% Test Acc</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="main-wrapper">
+        <!-- Hero Section -->
+        <section class="hero-section">
+            <h1>Automated Dyslexia Handwriting Screening</h1>
+            <p>Upload a single character or multiple handwriting samples at once. The hybrid AI system extracts deep spatial features using a CNN and computes consensus risk scores through SVM and Random Forest classifiers.</p>
+        </section>
+
+        <!-- Screening Interface Grid -->
+        <section class="screening-grid">
+            <!-- Left: Upload & Controls Card -->
+            <div class="card upload-card">
+                <div class="card-header">
+                    <h2><i class="fa-solid fa-cloud-arrow-up"></i> Upload Handwriting Samples</h2>
+                    <span class="badge">Multi-Image Support</span>
+                </div>
+                <p class="section-desc">Drag & drop 1 or more handwriting images (letters or digits in PNG, JPG, JPEG).</p>
+
+                <!-- Drag & Drop Zone -->
+                <div class="dropzone" id="dropzone">
+                    <i class="fa-solid fa-images dropzone-icon"></i>
+                    <h3>Drag & Drop handwriting images here</h3>
+                    <p>or <label for="fileInput" class="browse-link">browse files</label> from your device</p>
+                    <input type="file" id="fileInput" accept="image/png, image/jpeg, image/jpg" multiple style="display: none;">
+                    <span class="dropzone-hint">Supports single or multi-character batch submissions</span>
+                </div>
+
+                <!-- Live Thumbnail Preview Strip -->
+                <div class="preview-container" id="previewContainer" style="display: none;">
+                    <div class="preview-header">
+                        <span id="previewCount">0 images selected</span>
+                        <button type="button" class="btn-text" id="clearBtn"><i class="fa-solid fa-trash-can"></i> Clear All</button>
+                    </div>
+                    <div class="preview-grid" id="previewGrid"></div>
+                </div>
+
+                <!-- Demo Samples Bar -->
+                <div class="demo-section">
+                    <h4><i class="fa-solid fa-bolt"></i> Quick Demo Benchmark Samples:</h4>
+                    <div class="demo-buttons">
+                        <button type="button" class="btn-demo" data-type="normal"><i class="fa-solid fa-check"></i> Normal Sample</button>
+                        <button type="button" class="btn-demo" data-type="reversal"><i class="fa-solid fa-arrows-rotate"></i> Reversal Sample</button>
+                        <button type="button" class="btn-demo" data-type="corrected"><i class="fa-solid fa-pen-nib"></i> Corrected Sample</button>
+                        <button type="button" class="btn-demo btn-demo-suite" data-type="suite"><i class="fa-solid fa-layer-group"></i> Multi-Sample Suite (6 Imgs)</button>
+                    </div>
+                </div>
+
+                <!-- Submit Button -->
+                <button type="button" class="btn-primary" id="analyzeBtn" disabled>
+                    <i class="fa-solid fa-microchip"></i> Analyze Handwriting
+                </button>
+            </div>
+
+            <!-- Right: Results & Analysis Card -->
+            <div class="card results-card" id="resultsCard">
+                <div class="card-header">
+                    <h2><i class="fa-solid fa-chart-pie"></i> Screening Results & Clinical Risk</h2>
+                    <span class="badge" id="resultsBadge">Standby</span>
+                </div>
+
+                <!-- Empty State Placeholder -->
+                <div class="empty-state" id="emptyState">
+                    <i class="fa-solid fa-file-medical empty-icon"></i>
+                    <h3>No Analysis Conducted Yet</h3>
+                    <p>Upload handwriting images or click a demo sample to generate instant consensus triage.</p>
+                </div>
+
+                <!-- Spinner / Loading State -->
+                <div class="loading-state" id="loadingState" style="display: none;">
+                    <div class="spinner"></div>
+                    <p id="loadingText">Extracting 128-D CNN features & computing consensus...</p>
+                </div>
+
+                <!-- Active Results Content -->
+                <div class="results-content" id="resultsContent" style="display: none;">
+                    <!-- Consensus Banner -->
+                    <div class="consensus-banner" id="consensusBanner">
+                        <div class="consensus-top">
+                            <span class="consensus-tag" id="consensusTag">SESSION CONSENSUS DECISION</span>
+                            <span class="confidence-pill" id="confidencePill">Avg Confidence: --%</span>
+                        </div>
+                        <h1 class="consensus-title" id="consensusTitle">NORMAL</h1>
+                        <p class="risk-subtitle" id="riskSubtitle">Risk Level: Low Risk</p>
+                        <p class="risk-desc" id="riskDesc">Clinical interpretation description goes here.</p>
+                    </div>
+
+                    <!-- Metrics Counter Bar -->
+                    <div class="metrics-row" id="metricsRow">
+                        <div class="metric-box">
+                            <span class="metric-label">Total Images</span>
+                            <span class="metric-val" id="metricTotal">0</span>
+                        </div>
+                        <div class="metric-box risk-high">
+                            <span class="metric-label">Reversals</span>
+                            <span class="metric-val" id="metricReversals">0%</span>
+                        </div>
+                        <div class="metric-box risk-mod">
+                            <span class="metric-label">Corrected</span>
+                            <span class="metric-val" id="metricCorrected">0%</span>
+                        </div>
+                        <div class="metric-box risk-low">
+                            <span class="metric-label">Normal</span>
+                            <span class="metric-val" id="metricNormal">0%</span>
+                        </div>
+                    </div>
+
+                    <!-- Probability Distribution Bars -->
+                    <div class="prob-section">
+                        <h4>Averaged Probability Distribution (All Samples)</h4>
+                        <div class="prob-bars">
+                            <div class="prob-bar-group">
+                                <div class="prob-labels">
+                                    <span>Reversal (Dyslexia Biomarker)</span>
+                                    <span id="probValReversal">0%</span>
+                                </div>
+                                <div class="prob-track">
+                                    <div class="prob-fill fill-reversal" id="barReversal" style="width: 0%;"></div>
+                                </div>
+                            </div>
+                            <div class="prob-bar-group">
+                                <div class="prob-labels">
+                                    <span>Corrected (Stroke Hesitation)</span>
+                                    <span id="probValCorrected">0%</span>
+                                </div>
+                                <div class="prob-track">
+                                    <div class="prob-fill fill-corrected" id="barCorrected" style="width: 0%;"></div>
+                                </div>
+                            </div>
+                            <div class="prob-bar-group">
+                                <div class="prob-labels">
+                                    <span>Normal (Standard Handwriting)</span>
+                                    <span id="probValNormal">0%</span>
+                                </div>
+                                <div class="prob-track">
+                                    <div class="prob-fill fill-normal" id="barNormal" style="width: 0%;"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Model Consensus Cards -->
+                    <div class="model-cards-grid">
+                        <div class="model-box">
+                            <div class="model-title"><i class="fa-solid fa-network-wired"></i> CNN Backbone</div>
+                            <div class="model-pred" id="cnnPred">--</div>
+                            <div class="model-conf" id="cnnConf">Confidence: --%</div>
+                        </div>
+                        <div class="model-box">
+                            <div class="model-title"><i class="fa-solid fa-shapes"></i> SVM (RBF)</div>
+                            <div class="model-pred" id="svmPred">--</div>
+                            <div class="model-conf" id="svmConf">Confidence: --%</div>
+                        </div>
+                        <div class="model-box">
+                            <div class="model-title"><i class="fa-solid fa-tree"></i> Random Forest</div>
+                            <div class="model-pred" id="rfPred">--</div>
+                            <div class="model-conf" id="rfConf">Confidence: --%</div>
+                        </div>
+                    </div>
+
+                    <!-- Individual Sample Breakdown (For multi-image submissions) -->
+                    <div class="individual-section" id="individualSection">
+                        <h4>Individual Sample Breakdown</h4>
+                        <div class="sample-grid" id="sampleGrid"></div>
+                    </div>
+
+                    <!-- Actions & Downloads -->
+                    <div class="actions-row">
+                        <button type="button" class="btn-action" id="downloadReportBtn">
+                            <i class="fa-solid fa-file-arrow-down"></i> Download Clinical Report (.txt)
+                        </button>
+                        <button type="button" class="btn-action" id="downloadCsvBtn">
+                            <i class="fa-solid fa-file-csv"></i> Export Data (.csv)
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Benchmark & Metrics Section -->
+        <section class="benchmark-section">
+            <div class="section-title">
+                <h2><i class="fa-solid fa-chart-line"></i> Full-Scale Benchmark & Model Performance</h2>
+                <p>Evaluated across all 56,723 unseen handwriting images from the complete 208,372 image dataset.</p>
+            </div>
+
+            <div class="table-card">
+                <table class="benchmark-table">
+                    <thead>
+                        <tr>
+                            <th>Model Architecture</th>
+                            <th>Accuracy (%)</th>
+                            <th>Macro Precision (%)</th>
+                            <th>Macro Recall (%)</th>
+                            <th>Macro F1-Score (%)</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Standalone CNN</strong></td>
+                            <td>85.03%</td>
+                            <td>85.20%</td>
+                            <td>85.23%</td>
+                            <td>85.07%</td>
+                            <td><span class="table-tag">Baseline</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>CNN + SVM (RBF Kernel)</strong></td>
+                            <td>88.22%</td>
+                            <td>88.40%</td>
+                            <td>88.24%</td>
+                            <td>88.30%</td>
+                            <td><span class="table-tag success">+3.19%</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>CNN + Random Forest (150 Trees)</strong></td>
+                            <td>88.52%</td>
+                            <td>88.74%</td>
+                            <td>88.55%</td>
+                            <td>88.63%</td>
+                            <td><span class="table-tag success">+3.49%</span></td>
+                        </tr>
+                        <tr class="highlight-row">
+                            <td><strong>🏆 Hybrid Consensus Ensemble</strong></td>
+                            <td><strong>88.67%</strong></td>
+                            <td><strong>88.79%</strong></td>
+                            <td><strong>88.73%</strong></td>
+                            <td><strong>88.76%</strong></td>
+                            <td><span class="table-tag primary">Top Performer</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Visualization Gallery -->
+            <div class="plots-grid">
+                <div class="plot-box">
+                    <h4>Confusion Matrices (56,723 Test Images)</h4>
+                    <img src="/static/images/confusion_matrices.png" alt="Confusion Matrices" onerror="this.src='/results/confusion_matrices.png';">
+                </div>
+                <div class="plot-box">
+                    <h4>Multiclass ROC Curves</h4>
+                    <img src="/static/images/roc_curves.png" alt="ROC Curves" onerror="this.src='/results/roc_curves.png';">
+                </div>
+                <div class="plot-box">
+                    <h4>Comparative Metrics Bar Chart</h4>
+                    <img src="/static/images/model_comparison.png" alt="Model Comparison" onerror="this.src='/results/model_comparison.png';">
+                </div>
+                <div class="plot-box">
+                    <h4>2D PCA Latent Space Separation</h4>
+                    <img src="/static/images/feature_tsne.png" alt="PCA Embedding" onerror="this.src='/results/feature_tsne.png';">
+                </div>
+            </div>
+        </section>
+
+        <!-- Clinical Guidelines & Educational Insights -->
+        <section class="guide-section">
+            <div class="section-title">
+                <h2><i class="fa-solid fa-book-medical"></i> Clinical Handwriting Biomarkers & Dyslexia</h2>
+            </div>
+            <div class="guide-grid">
+                <div class="guide-card">
+                    <div class="guide-icon icon-reversal"><i class="fa-solid fa-arrows-rotate"></i></div>
+                    <h3>Reversals (Mirror Writing)</h3>
+                    <p>Persistent kinetic reversals (e.g. <em>b/d</em>, <em>p/q</em>, <em>s/z</em>, <em>2/5</em>) beyond age 7–8 strongly correlate with visual-spatial dyslexia. The CNN extracts directional orientation markers to detect letter mirroring.</p>
+                </div>
+                <div class="guide-card">
+                    <div class="guide-icon icon-corrected"><i class="fa-solid fa-pen-ruler"></i></div>
+                    <h3>Overwritten / Corrected Strokes</h3>
+                    <p>Frequent retracing, hesitation, and mid-character stroke repairs reflect uncertainty in character spatial configuration, common in dysgraphia and compensatory dyslexia strategies.</p>
+                </div>
+                <div class="guide-card">
+                    <div class="guide-icon icon-normal"><i class="fa-solid fa-check-double"></i></div>
+                    <h3>Multi-Sample Averaging Rationale</h3>
+                    <p>Evaluating multiple characters written by the same individual and averaging individual probabilities minimizes false positives caused by natural penmanship quirks, delivering reliable clinical screening.</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <p>NeuroScan AI Dyslexia Screening System &copy; 2026 | Automated Assistive Diagnostic Tool | For Educational & Clinical Screening</p>
+    </footer>
+
+    <!-- Dedicated JavaScript Logic -->
+    <script src="/static/js/main.js"></script>
+</body>
+</html>
