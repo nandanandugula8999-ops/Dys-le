@@ -13,6 +13,7 @@ dataset/
 venv/
 env/
 .env/
+.venv311/
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints*/
