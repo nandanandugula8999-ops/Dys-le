@@ -24,7 +24,8 @@
                 </div>
             </div>
             <div class="nav-badges">
-                <span class="status-pill active" title="Trained on full dataset"><i class="fa-solid fa-circle-check"></i> CNN Backbone (98.8%)</span>
+                <span class="status-pill active" title="Trained on full dataset"><i class="fa-solid fa-circle-check"></i> Custom CNN (98.8%)</span>
+                <span class="status-pill active" title="MobileNetV2 transfer backbone — weights pending training"><i class="fa-solid fa-mobile-screen"></i> MobileNetV2</span>
                 <span class="status-pill active" title="RBF Kernel Margin Optimization"><i class="fa-solid fa-circle-check"></i> SVM Classifier</span>
                 <span class="status-pill active" title="150 Decision Trees"><i class="fa-solid fa-circle-check"></i> Random Forest</span>
                 <span class="status-pill highlight" title="Full 56,723 Test Benchmark"><i class="fa-solid fa-award"></i> 88.67% Test Acc</span>
@@ -175,7 +176,7 @@
                     <!-- Model Consensus Cards -->
                     <div class="model-cards-grid">
                         <div class="model-box">
-                            <div class="model-title"><i class="fa-solid fa-network-wired"></i> CNN Backbone</div>
+                            <div class="model-title"><i class="fa-solid fa-network-wired"></i> Custom CNN</div>
                             <div class="model-pred" id="cnnPred">--</div>
                             <div class="model-conf" id="cnnConf">Confidence: --%</div>
                         </div>
@@ -190,6 +191,26 @@
                             <div class="model-conf" id="rfConf">Confidence: --%</div>
                         </div>
                     </div>
+
+                    <!-- Backbone Comparison: Custom CNN vs MobileNetV2 vs SVM -->
+                    <div class="model-cards-grid" id="backboneCompare" style="margin-top: 12px;">
+                        <div class="model-box">
+                            <div class="model-title"><i class="fa-solid fa-microchip"></i> Custom CNN <span class="table-tag success" id="cmpCustomStatus">live</span></div>
+                            <div class="model-pred" id="cmpCustomPred">--</div>
+                            <div class="model-conf" id="cmpCustomConf">64×64 gray · --%</div>
+                        </div>
+                        <div class="model-box">
+                            <div class="model-title"><i class="fa-solid fa-mobile-screen"></i> MobileNetV2 <span class="table-tag" id="cmpMobileStatus">pending</span></div>
+                            <div class="model-pred" id="cmpMobilePred">--</div>
+                            <div class="model-conf" id="cmpMobileConf">96×96 RGB · not trained</div>
+                        </div>
+                        <div class="model-box">
+                            <div class="model-title"><i class="fa-solid fa-scale-balanced"></i> SVM vs Consensus</div>
+                            <div class="model-pred" id="cmpSvmPred">--</div>
+                            <div class="model-conf" id="cmpSvmConf">--</div>
+                        </div>
+                    </div>
+                    <p class="gradcam-caption" id="backboneNote" style="margin-top:6px;"></p>
 
                     <!-- Grad-CAM Explainability (single-image submissions) -->
                     <div class="gradcam-section" id="gradcamSection" style="display: none;">
@@ -270,6 +291,11 @@
                             <td><strong>88.73%</strong></td>
                             <td><strong>88.76%</strong></td>
                             <td><span class="table-tag primary">Top Performer</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>MobileNetV2 + SVM</strong> <span class="table-tag">new backbone</span></td>
+                            <td colspan="4" style="text-align:center; color:#64748b;">Not trained yet — run <code>python run_pipeline.py --backbone mobilenetv2</code>, then per-upload comparison appears above.</td>
+                            <td><span class="table-tag">Pending</span></td>
                         </tr>
                     </tbody>
                 </table>

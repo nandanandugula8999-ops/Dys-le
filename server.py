@@ -9,7 +9,7 @@ import io
 import sys
 import base64
 from pathlib import Path
-from typing import List
+from typing import List, Dict
 from PIL import Image
 from flask import Flask, render_template, request, jsonify, send_from_directory
 
@@ -22,9 +22,84 @@ from src.config import (
     CLASSES, CLASS_RISK_MAP, RESULTS_DIR, MODELS_DIR,
     CNN_MODEL_PATH, SVM_MODEL_PATH, RF_MODEL_PATH, SCALER_PATH,
     BACKBONE, backbone_model_paths,
+    MOBILENET_MODEL_PATH, MOBILENET_SVM_PATH, MOBILENET_RF_PATH,
+    MOBILENET_SCALER_PATH, MOBILENET_INPUT_SHAPE,
 )
 from src.hybrid_pipeline import HybridDyslexiaDetector
 from app.utils import get_demo_samples, generate_batch_clinical_report
+
+
+def _file_ok(p: Path) -> bool:
+    try:
+        return Path(p).exists() and Path(p).stat().st_size > 0
+    except Exception:
+        return False
+
+
+def backbone_status() -> Dict:
+    """Report which backbone weight sets exist (custom CNN vs MobileNetV2)."""
+    custom_ok = all(_file_ok(p) for p in [CNN_MODEL_PATH, SVM_MODEL_PATH, RF_MODEL_PATH, SCALER_PATH])
+    mobile_ok = all(_file_ok(p) for p in [MOBILENET_MODEL_PATH, MOBILENET_SVM_PATH, MOBILENET_RF_PATH, MOBILENET_SCALER_PATH])
+    return {
+        "active_backbone": getattr(detector, "backbone_name", BACKBONE),
+        "custom_cnn": {
+            "available": custom_ok,
+            "cnn": CNN_MODEL_PATH.name, "svm": SVM_MODEL_PATH.name,
+            "input": "64x64 grayscale", "status": "ready" if custom_ok else "missing weights",
+        },
+        "mobilenetv2": {
+            "available": mobile_ok,
+            "cnn": MOBILENET_MODEL_PATH.name, "svm": MOBILENET_SVM_PATH.name,
+            "input": f"{MOBILENET_INPUT_SHAPE[0]}x{MOBILENET_INPUT_SHAPE[1]} RGB",
+            "status": "ready" if mobile_ok else "not trained yet",
+            "train_hint": None if mobile_ok else "Train with: python run_pipeline.py --backbone mobilenetv2 (needs dataset/)",
+        },
+    }
+
+
+def attach_comparison(batch_result: Dict) -> Dict:
+    """Attach triple-comparison block: Custom CNN (live) + MobileNetV2 (status) + SVM heads."""
+    try:
+        st = backbone_status()
+    except Exception:
+        st = {"active_backbone": BACKBONE}
+    ma = (batch_result.get("model_averages") or {})
+    avg = (batch_result.get("average_probabilities") or {})
+    def _top(d):
+        try:
+            return max(d, key=lambda k: d[k]) if d else batch_result.get("overall_prediction")
+        except Exception:
+            return batch_result.get("overall_prediction")
+    batch_result["backbone_comparison"] = {
+        "active_backbone": st.get("active_backbone", BACKBONE),
+        "custom_cnn": {
+            "available": bool(st.get("custom_cnn", {}).get("available", True)),
+            "prediction": _top(ma.get("CNN") or avg),
+            "probabilities": ma.get("CNN") or avg,
+            "input": "64x64 grayscale",
+            "note": "Live custom-CNN head (this server)" if getattr(detector, "backbone_name", BACKBONE) == "custom_cnn" else "Custom-CNN weights present; server running mobilenetv2",
+        },
+        "mobilenetv2": {
+            "available": bool(st.get("mobilenetv2", {}).get("available", False)),
+            "prediction": _top(ma.get("CNN") or avg) if st.get("mobilenetv2", {}).get("available") else None,
+            "probabilities": (ma.get("CNN") or avg) if st.get("mobilenetv2", {}).get("available") else None,
+            "input": f"{MOBILENET_INPUT_SHAPE[0]}x{MOBILENET_INPUT_SHAPE[1]} RGB",
+            "status": (st.get("mobilenetv2", {}) or {}).get("status", "not trained yet"),
+            "train_hint": (st.get("mobilenetv2", {}) or {}).get("train_hint"),
+            "note": "Live MobileNetV2 head" if st.get("mobilenetv2", {}).get("available") and getattr(detector, "backbone_name", BACKBONE) == "mobilenetv2" else "Placeholder until mobilenetv2 weights are trained",
+        },
+        "svm": {
+            "available": True,
+            "prediction": _top(ma.get("SVM") or avg),
+            "probabilities": ma.get("SVM") or avg,
+            "note": "SVM (RBF) on 128-D backbone features",
+        },
+        "consensus": {
+            "prediction": batch_result.get("overall_prediction"),
+            "confidence_percentage": batch_result.get("overall_confidence_percentage"),
+        },
+    }
+    return batch_result
 
 # Initialize Flask App
 app = Flask(__name__, template_folder="templates", static_folder="static")
@@ -73,7 +148,52 @@ def health():
             "SVM": "Active (97.0% Train Acc)",
             "Random_Forest": "Active (98.8% Train Acc)",
             "Hybrid_Consensus": "Active (88.67% Test Acc)"
-        }
+        },
+        "backbones": backbone_status(),
+    })
+
+
+@app.route("/api/backbones", methods=["GET"])
+def backbones():
+    """Which backbone weight sets exist (custom CNN vs MobileNetV2)."""
+    return jsonify(backbone_status())
+
+
+@app.route("/api/compare", methods=["POST"])
+def compare():
+    """
+    Triple comparison: Custom CNN + SVM + consensus on this server's active
+    backbone, plus MobileNetV2 availability. Runs live inference when the
+    matching weights exist; otherwise reports 'not trained yet' so the UI
+    can render the comparison table honestly.
+    """
+    if "images" not in request.files:
+        return jsonify({"error": "No image files provided in request."}), 400
+    uploaded_files = request.files.getlist("images")
+    if not uploaded_files or uploaded_files[0].filename == "":
+        return jsonify({"error": "No files selected."}), 400
+    images: List[Image.Image] = []
+    filenames: List[str] = []
+    for f in uploaded_files:
+        try:
+            img = Image.open(f.stream).convert("L")
+            images.append(img)
+            filenames.append(f.filename)
+        except Exception as e:
+            return jsonify({"error": f"Failed to process image '{f.filename}': {str(e)}"}), 400
+    batch_result = detector.predict_batch(images, filenames)
+    attach_comparison(batch_result)
+    return jsonify({
+        "total_images": batch_result["total_images"],
+        "overall_prediction": batch_result["overall_prediction"],
+        "backbone_comparison": batch_result["backbone_comparison"],
+        "backbones": backbone_status(),
+        "individual_results": [
+            {"filename": r.get("filename"), "prediction": r.get("prediction"),
+             "confidence_percentage": r.get("confidence_percentage"),
+             "models": {k: {"prediction": v.get("prediction")} for k, v in (r.get("models") or {}).items()}}
+            for r in batch_result["individual_results"]
+        ],
     })
 
 
@@ -115,6 +235,7 @@ def predict():
         except Exception:
             ind_res["processed_thumbnail_base64"] = thumbnails[idx]
 
+    attach_comparison(batch_result)
     return jsonify(batch_result)
 
 
@@ -195,6 +316,7 @@ def demo():
     for idx, ind_res in enumerate(batch_result["individual_results"]):
         ind_res["thumbnail_base64"] = thumbnails[idx]
 
+    attach_comparison(batch_result)
     return jsonify(batch_result)
 
 

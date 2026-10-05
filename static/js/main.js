@@ -251,6 +251,13 @@ document.addEventListener("DOMContentLoaded", () => {
             overall_risk_color: overall === "Reversal" ? "#dc3545" : overall === "Corrected" ? "#ffc107" : "#28a745",
             individual_results: inds,
             model_averages: { CNN: avg, SVM: avg, Random_Forest: avg },
+            backbone_comparison: {
+                active_backbone: "custom_cnn (offline demo)",
+                custom_cnn: { available: true, prediction: overall, probabilities: avg, input: "64×64 gray", note: "Offline heuristic estimate" },
+                mobilenetv2: { available: false, prediction: null, probabilities: null, input: "96×96 RGB", status: "not trained yet", train_hint: "python run_pipeline.py --backbone mobilenetv2", note: "Placeholder until trained" },
+                svm: { available: true, prediction: overall, probabilities: avg, note: "SVM (RBF) heuristic estimate" },
+                consensus: { prediction: overall, confidence_percentage: `${(avg[overall] * 100).toFixed(1)}%` }
+            },
             mode: "offline_demo"
         };
     }
@@ -504,6 +511,47 @@ document.addEventListener("DOMContentLoaded", () => {
 
         rfPred.textContent = getTopClass(res.model_averages["Random_Forest"]);
         rfConf.textContent = `Confidence: ${(res.model_averages["Random_Forest"][rfPred.textContent] * 100).toFixed(1)}%`;
+
+        // 4b. Backbone comparison: Custom CNN vs MobileNetV2 vs SVM
+        try {
+            const bc = res.backbone_comparison || null;
+            const el = (id) => document.getElementById(id);
+            const customP = bc ? bc.custom_cnn : null;
+            const mobileP = bc ? bc.mobilenetv2 : null;
+            const svmP = bc ? bc.svm : null;
+            const cnnTop = getTopClass(res.model_averages["CNN"]);
+            const svmTop = getTopClass(res.model_averages["SVM"]);
+            if (el("cmpCustomPred")) el("cmpCustomPred").textContent = (customP && customP.prediction) || cnnTop;
+            if (el("cmpCustomConf")) el("cmpCustomConf").textContent = `64×64 gray · ${(res.model_averages["CNN"][cnnTop] * 100).toFixed(1)}%`;
+            if (el("cmpCustomStatus")) {
+                const live = !customP || customP.available !== false;
+                el("cmpCustomStatus").textContent = live ? "live" : "missing";
+                el("cmpCustomStatus").className = "table-tag " + (live ? "success" : "");
+            }
+            if (el("cmpMobilePred")) el("cmpMobilePred").textContent = (mobileP && mobileP.prediction) || "—";
+            if (el("cmpMobileConf")) {
+                el("cmpMobileConf").textContent = (mobileP && mobileP.available)
+                    ? `96×96 RGB · ${(Object.values(mobileP.probabilities || {})[0] * 100 || 0).toFixed(1)}%`
+                    : "96×96 RGB · not trained";
+            }
+            if (el("cmpMobileStatus")) {
+                const ok = !!(mobileP && mobileP.available);
+                el("cmpMobileStatus").textContent = ok ? "live" : "pending";
+                el("cmpMobileStatus").className = "table-tag " + (ok ? "success" : "");
+            }
+            if (el("cmpSvmPred")) el("cmpSvmPred").textContent = (svmP && svmP.prediction) || svmTop;
+            if (el("cmpSvmConf")) {
+                const agree = cnnTop === svmTop ? "CNN↔SVM agree" : "CNN↔SVM split";
+                el("cmpSvmConf").textContent = `${agree} · consensus ${predClass} (${res.overall_confidence_percentage})`;
+            }
+            if (el("backboneNote")) {
+                el("backboneNote").textContent = (mobileP && mobileP.available)
+                    ? "All three heads live on this backend."
+                    : (offline
+                        ? "Offline demo: Custom CNN + SVM are heuristic estimates; MobileNetV2 needs training (python run_pipeline.py --backbone mobilenetv2)."
+                        : "MobileNetV2 weights not trained yet — Custom CNN + SVM are live. Train with: python run_pipeline.py --backbone mobilenetv2");
+            }
+        } catch (e) { /* comparison is best-effort */ }
 
         // 5. Individual Samples Gallery
         if (isMulti) {
