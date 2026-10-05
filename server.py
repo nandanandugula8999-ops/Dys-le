@@ -118,6 +118,36 @@ def predict():
     return jsonify(batch_result)
 
 
+@app.route("/api/gradcam", methods=["POST"])
+def gradcam():
+    """
+    Grad-CAM visual explanation for a single uploaded image.
+    Form fields: 'image' (file), optional 'class_index' (int) and 'alpha' (float).
+    Returns heatmap overlay data URI + attribution metadata.
+    """
+    if "image" not in request.files:
+        return jsonify({"error": "No image file provided (field 'image')."}), 400
+    f = request.files["image"]
+    if not f or f.filename == "":
+        return jsonify({"error": "No file selected."}), 400
+    try:
+        class_index = request.form.get("class_index", None)
+        class_index = int(class_index) if class_index not in (None, "") else None
+    except ValueError:
+        return jsonify({"error": "Invalid 'class_index'; must be an integer."}), 400
+    try:
+        alpha = float(request.form.get("alpha", 0.45))
+    except ValueError:
+        return jsonify({"error": "Invalid 'alpha'; must be a float."}), 400
+    try:
+        img = Image.open(f.stream).convert("L")
+        result = detector.explain(img, class_index=class_index, alpha=alpha)
+        result["filename"] = f.filename
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": f"Grad-CAM failed: {str(e)}"}), 500
+
+
 @app.route("/api/demo", methods=["GET"])
 def demo():
     """

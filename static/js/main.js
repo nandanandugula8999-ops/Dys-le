@@ -294,6 +294,35 @@ document.addEventListener("DOMContentLoaded", () => {
             });
         } else {
             individualSection.style.display = "none";
+            // Single image: fetch on-demand Grad-CAM explanation.
+            const gradcamSection = document.getElementById("gradcamSection");
+            const gradcamImg = document.getElementById("gradcamImg");
+            const gradcamCaption = document.getElementById("gradcamCaption");
+            if (gradcamSection && selectedFiles.length === 1) {
+                gradcamSection.style.display = "block";
+                if (gradcamImg) gradcamImg.style.opacity = "0.4";
+                if (gradcamCaption) gradcamCaption.textContent = "Computing Grad-CAM...";
+                const fd = new FormData();
+                fd.append("image", selectedFiles[0]);
+                fetch("/api/gradcam", { method: "POST", body: fd })
+                    .then((r) => r.json())
+                    .then((g) => {
+                        if (g.gradcam_base64 && gradcamImg) {
+                            gradcamImg.src = g.gradcam_base64;
+                            gradcamImg.style.opacity = "1";
+                        }
+                        if (gradcamCaption) {
+                            gradcamCaption.textContent = g.target_class
+                                ? `Focus: ${g.target_class} (layer ${g.conv_layer}, score ${g.focus_score})`
+                                : (g.error || "Grad-CAM unavailable.");
+                        }
+                    })
+                    .catch(() => {
+                        if (gradcamCaption) gradcamCaption.textContent = "Grad-CAM unavailable.";
+                    });
+            } else if (gradcamSection) {
+                gradcamSection.style.display = "none";
+            }
         }
     }
 

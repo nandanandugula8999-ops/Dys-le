@@ -642,6 +642,40 @@ body {
     border-top: 1px solid var(--border-color);
 }
 
+/* Grad-CAM Explainability Panel */
+.gradcam-section {
+    margin-top: 1.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.gradcam-section h4 {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--dark);
+    margin-bottom: 0.85rem;
+}
+
+.gradcam-wrap {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.gradcam-wrap img {
+    width: 160px;
+    height: 160px;
+    object-fit: contain;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-color);
+    background-color: #0f172a;
+}
+
+.gradcam-caption {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
 .individual-section h4 {
     font-size: 0.9rem;
     font-weight: 700;

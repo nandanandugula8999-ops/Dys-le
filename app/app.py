@@ -477,6 +477,23 @@ if menu == "🔍 Live Handwriting Screening":
                 st.pyplot(fig_f)
                 plt.close(fig_f)
 
+            # Grad-CAM Explainability
+            st.markdown("### 🔥 Model Explainability (Grad-CAM)")
+            st.caption("Heatmap shows which stroke regions drove the CNN decision. Red = high influence.")
+            with st.spinner("Computing Grad-CAM attribution..."):
+                try:
+                    explanation = detector.explain(selected_image)
+                    import base64 as _b64
+                    import io as _io
+                    _uri = explanation["gradcam_base64"]
+                    _raw = _b64.b64decode(_uri.split(",", 1)[1])
+                    st.image(Image.open(_io.BytesIO(_raw)), width=180,
+                             caption=f"Grad-CAM: {explanation['target_class']} "
+                                     f"(layer {explanation['conv_layer']}, "
+                                     f"focus {explanation['focus_score']})")
+                except Exception as e:
+                    st.warning(f"Grad-CAM unavailable: {e}")
+
             # Clinical Report Generation
             st.markdown("---")
             st.subheader("Generate Clinical Screening Summary")

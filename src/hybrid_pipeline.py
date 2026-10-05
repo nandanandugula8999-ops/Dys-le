@@ -383,3 +383,40 @@ class HybridDyslexiaDetector:
             }
         }
 
+    def explain(
+        self,
+        image: Union[str, Path, Image.Image, np.ndarray],
+        class_index: Optional[int] = None,
+        alpha: float = 0.45,
+    ) -> Dict[str, Any]:
+        """
+        Grad-CAM visual explanation for the CNN backbone decision.
+
+        Returns a JSON-serializable dict with:
+        - 'gradcam_base64': heatmap overlay data URI (PIL thumbnail)
+        - 'target_class' / 'target_class_index': explained class
+        - 'conv_layer': last conv layer used for attribution
+        - 'backbone': active backbone name
+        - 'focus_score': mean heatmap activation (0-1)
+        """
+        from src.gradcam import (
+            compute_heatmap,
+            overlay_on_grayscale,
+            overlay_to_data_uri,
+        )
+
+        x, prep_details, pil_processed = self.preprocess_image(image, return_details=True)
+        heatmap, target_idx, conv_name = compute_heatmap(
+            self.cnn_model, x, class_index=class_index
+        )
+        overlay = overlay_on_grayscale(pil_processed, heatmap, alpha=alpha)
+        return {
+            "gradcam_base64": overlay_to_data_uri(overlay),
+            "target_class": CLASSES[target_idx],
+            "target_class_index": target_idx,
+            "conv_layer": conv_name,
+            "backbone": getattr(self, "backbone_name", "custom_cnn"),
+            "focus_score": round(float(heatmap.mean()), 4),
+            "preprocessing": prep_details,
+        }
+
