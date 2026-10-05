@@ -1,0 +1,7 @@
+# Netlify hosts static files only — it cannot run server.py (Flask + TensorFlow).
+# This builds a static preview: templates/index.html + static/ → public/
+# Your AI backend (/api/predict, /api/demo, /api/gradcam) must be hosted
+# separately (Render / Railway / Hugging Face Spaces running server_cnn_only.py).
+[build]
+  command = "mkdir -p public && cp templates/index.html public/index.html && cp -r static public/static"
+  publish = "public"
