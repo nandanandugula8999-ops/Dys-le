@@ -4,10 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NeuroScan AI | Hybrid Dyslexia Handwriting Screening</title>
+    <meta name="description" content="NeuroScan AI — clinical-grade hybrid AI screening for dyslexia handwriting biomarkers: Custom CNN, MobileNetV2, SVM consensus.">
     <!-- Google Fonts & Font Awesome Icons -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Dedicated CSS Stylesheet -->
     <link rel="stylesheet" href="/static/css/style.css">
@@ -37,8 +38,15 @@
     <main class="main-wrapper">
         <!-- Hero Section -->
         <section class="hero-section">
-            <h1>Automated Dyslexia Handwriting Screening</h1>
-            <p>Upload a single character or multiple handwriting samples at once. The hybrid AI system extracts deep spatial features using a CNN and computes consensus risk scores through SVM and Random Forest classifiers.</p>
+            <span class="eyebrow"><i class="fa-solid fa-shield-halved"></i> Clinical screening aid · not a diagnosis</span>
+            <h1>Automated Dyslexia <span class="gradient-text">Handwriting Screening</span></h1>
+            <p>Upload single characters or batches. Triple-head hybrid AI — Custom CNN, MobileNetV2 &amp; SVM/Random Forest consensus — scores reversal, overwriting and normal patterns with calibrated risk.</p>
+            <div class="hero-stats">
+                <div class="stat-chip"><strong>208K</strong><span>training images</span></div>
+                <div class="stat-chip"><strong>56.7K</strong><span>unseen test images</span></div>
+                <div class="stat-chip"><strong>88.67%</strong><span>hybrid test accuracy</span></div>
+                <div class="stat-chip"><strong>3-head</strong><span>CNN · MobileNetV2 · SVM</span></div>
+            </div>
         </section>
 
         <!-- Screening Interface Grid -->
@@ -349,7 +357,16 @@
 
     <!-- Footer -->
     <footer class="footer">
-        <p>NeuroScan AI Dyslexia Screening System &copy; 2026 | Automated Assistive Diagnostic Tool | For Educational & Clinical Screening</p>
+        <div class="footer-inner">
+            <div class="footer-brand">
+                <i class="fa-solid fa-brain-circuit"></i>
+                <div>
+                    <strong>NeuroScan AI</strong>
+                    <span>Dyslexia handwriting screening · assistive tool — not a substitute for formal clinical diagnosis.</span>
+                </div>
+            </div>
+            <p class="footer-meta">Hybrid Custom CNN + MobileNetV2 + SVM/RF consensus · &copy; 2026 · Educational &amp; clinical screening use</p>
+        </div>
     </footer>
 
     <!-- Dedicated JavaScript Logic -->
