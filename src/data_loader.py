@@ -14,7 +14,8 @@ import tensorflow as tf
 from src.config import (
     TRAIN_DIR, TEST_DIR, CLASSES, CLASS_TO_IDX,
     IMG_HEIGHT, IMG_WIDTH, BATCH_SIZE, RANDOM_SEED,
-    TRAIN_SAMPLES_PER_CLASS, VAL_SAMPLES_PER_CLASS, TEST_SAMPLES_PER_CLASS
+    TRAIN_SAMPLES_PER_CLASS, VAL_SAMPLES_PER_CLASS, TEST_SAMPLES_PER_CLASS,
+    MOBILENET_INPUT_SIZE,
 )
 
 
@@ -170,4 +171,43 @@ def get_full_test_dataset(batch_size: int = BATCH_SIZE):
     normalize = lambda x, y: (tf.cast(x, tf.float32) / 255.0, y)
     test_ds = test_full.map(normalize, num_parallel_calls=tf.data.AUTOTUNE).prefetch(tf.data.AUTOTUNE)
     return test_ds
+
+
+# ---------------------------------------------------------------------------
+# MobileNetV2 backend helpers (RGB, 96x96, ImageNet preprocessing)
+# ---------------------------------------------------------------------------
+
+def to_mobilenet_input(gray_batch: tf.Tensor, size: int = MOBILENET_INPUT_SIZE) -> tf.Tensor:
+    """
+    Convert a grayscale batch (N,H,W,1) in [0,1] to MobileNetV2 RGB input
+    (N,size,size,3) in [0,255] float32. The model's internal Rescaling layer
+    then maps it to [-1, 1], matching tf.keras.applications.mobilenet_v2.
+    """
+    x = tf.cast(gray_batch, tf.float32)
+    if x.shape.rank == 4 and x.shape[-1] == 1:
+        x = tf.image.grayscale_to_rgb(x)
+    elif x.shape.rank == 3:
+        x = tf.image.grayscale_to_rgb(tf.expand_dims(x, -1))
+    x = tf.image.resize(x, [size, size])
+    return x * 255.0
+
+
+def adapt_dataset_for_mobilenet(dataset: tf.data.Dataset, size: int = MOBILENET_INPUT_SIZE) -> tf.data.Dataset:
+    """Map a normalized grayscale dataset to MobileNetV2 RGB input on the fly."""
+    return dataset.map(
+        lambda x, y: (to_mobilenet_input(x, size=size), y),
+        num_parallel_calls=tf.data.AUTOTUNE,
+    ).prefetch(tf.data.AUTOTUNE)
+
+
+def load_and_preprocess_image_mobilenet(image_path: str, size: int = MOBILENET_INPUT_SIZE) -> np.ndarray:
+    """
+    Load a handwriting image for MobileNetV2: grayscale -> RGB, resize,
+    scale to [0,255]. Returns shape (size, size, 3) float32.
+    """
+    img = Image.open(image_path).convert("L")
+    img = img.resize((size, size), Image.Resampling.BILINEAR)
+    arr = np.array(img, dtype=np.float32)  # [0, 255]
+    rgb = np.stack([arr, arr, arr], axis=-1)
+    return rgb
 

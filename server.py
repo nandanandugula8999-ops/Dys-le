@@ -20,7 +20,8 @@ if str(BASE_DIR) not in sys.path:
 
 from src.config import (
     CLASSES, CLASS_RISK_MAP, RESULTS_DIR, MODELS_DIR,
-    CNN_MODEL_PATH, SVM_MODEL_PATH, RF_MODEL_PATH, SCALER_PATH
+    CNN_MODEL_PATH, SVM_MODEL_PATH, RF_MODEL_PATH, SCALER_PATH,
+    BACKBONE, backbone_model_paths,
 )
 from src.hybrid_pipeline import HybridDyslexiaDetector
 from app.utils import get_demo_samples, generate_batch_clinical_report
@@ -29,13 +30,17 @@ from app.utils import get_demo_samples, generate_batch_clinical_report
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB max upload
 
-# Initialize Hybrid AI Detector
+# Initialize Hybrid AI Detector (backbone selectable via DYSLEXIA_BACKBONE env)
+# custom_cnn (default, existing .keras) or mobilenetv2 (new backend).
 print("[INFO] Initializing Hybrid AI Dyslexia Detector in Flask server...")
+_cnn_path, _svm_path, _rf_path, _scaler_path = backbone_model_paths(BACKBONE)
+print(f"[INFO] Backend backbone: {BACKBONE} | CNN: {_cnn_path.name}")
 detector = HybridDyslexiaDetector(
-    cnn_path=CNN_MODEL_PATH,
-    svm_path=SVM_MODEL_PATH,
-    rf_path=RF_MODEL_PATH,
-    scaler_path=SCALER_PATH
+    cnn_path=_cnn_path,
+    svm_path=_svm_path,
+    rf_path=_rf_path,
+    scaler_path=_scaler_path,
+    backbone=BACKBONE,
 )
 print("[SUCCESS] Hybrid AI Detector loaded and ready.")
 
@@ -59,10 +64,12 @@ def index():
 @app.route("/api/health", methods=["GET"])
 def health():
     """Health check endpoint."""
+    backbone = getattr(detector, "backbone_name", BACKBONE)
     return jsonify({
         "status": "healthy",
+        "backbone": backbone,
         "models": {
-            "CNN": "Active (98.8% Val Acc)",
+            "CNN": f"Active ({backbone})",
             "SVM": "Active (97.0% Train Acc)",
             "Random_Forest": "Active (98.8% Train Acc)",
             "Hybrid_Consensus": "Active (88.67% Test Acc)"

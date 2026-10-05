@@ -5,6 +5,7 @@ Trains on ALL 151,649 training images and benchmarks across ALL 56,723 test imag
 
 import time
 import json
+import argparse
 from datetime import datetime
 from pathlib import Path
 import numpy as np
@@ -13,11 +14,12 @@ import tensorflow as tf
 from src.config import (
     MODELS_DIR, RESULTS_DIR, CNN_MODEL_PATH, SVM_MODEL_PATH,
     RF_MODEL_PATH, SCALER_PATH, METADATA_PATH, CLASSES,
-    TRAIN_SAMPLES_PER_CLASS, EPOCHS, BATCH_SIZE, LEARNING_RATE, TRAIN_DIR
+    TRAIN_SAMPLES_PER_CLASS, EPOCHS, BATCH_SIZE, LEARNING_RATE, TRAIN_DIR,
+    BACKBONE, MOBILENET_INPUT_SHAPE, backbone_model_paths,
 )
 from src.data_loader import (
     get_full_train_and_val_datasets, get_full_test_dataset,
-    get_balanced_filepaths, create_tf_dataset
+    get_balanced_filepaths, create_tf_dataset, adapt_dataset_for_mobilenet,
 )
 from src.cnn_model import train_cnn
 from src.feature_extractor import DyslexiaFeatureExtractor
@@ -28,9 +30,17 @@ from src.evaluate import run_comprehensive_evaluation
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Hybrid Dyslexia pipeline (custom_cnn | mobilenetv2)")
+    parser.add_argument("--backbone", choices=["custom_cnn", "mobilenetv2"], default=BACKBONE,
+                        help="Backbone to train (default from DYSLEXIA_BACKBONE env or custom_cnn)")
+    args = parser.parse_args()
+    backbone = args.backbone.lower()
+    cnn_path, svm_path, rf_path, scaler_path = backbone_model_paths(backbone)
+    is_mobilenet = backbone == "mobilenetv2"
+
     total_start = time.time()
     print("=" * 80)
-    print("  FULL-SCALE HYBRID AI DYSLEXIA DETECTION PIPELINE (ALL 208,372 IMAGES)")
+    print(f"  FULL-SCALE HYBRID AI DYSLEXIA DETECTION PIPELINE (backbone={backbone})")
     print("=" * 80)
 
     # Step 1: Initialize Streaming Pipelines for Full Dataset
@@ -38,12 +48,18 @@ def main():
     t0 = time.time()
     train_ds, val_ds = get_full_train_and_val_datasets(batch_size=BATCH_SIZE, val_split=0.10)
     test_ds = get_full_test_dataset(batch_size=BATCH_SIZE)
+    if is_mobilenet:
+        print(f"  Adapting datasets to MobileNetV2 RGB input {tuple(MOBILENET_INPUT_SHAPE)}...")
+        train_ds = adapt_dataset_for_mobilenet(train_ds)
+        val_ds = adapt_dataset_for_mobilenet(val_ds)
+        test_ds = adapt_dataset_for_mobilenet(test_ds)
     print(f"  Streaming pipelines ready in {time.time() - t0:.2f}s")
 
     # Step 2: CNN Training on Full Training Dataset (151,649 images)
-    print("\n[STEP 2/6] Training / Fine-tuning CNN on ALL 151,649 training images...")
+    print("\n[STEP 2/6] Training / Fine-tuning backbone "
+          f"({backbone}) on ALL 151,649 training images...")
     t0 = time.time()
-    
+
     # Balanced class weights for raw training set (65k Corrected, 39k Normal, 46k Reversal)
     class_weights = {
         0: 0.7714,  # Corrected
@@ -53,20 +69,21 @@ def main():
     print(f"  Applied balanced class weights: {class_weights}")
 
     initial_model = None
-    if CNN_MODEL_PATH.exists():
-        print(f"  Loading existing checkpoint from {CNN_MODEL_PATH} for full-scale fine-tuning...")
-        initial_model = tf.keras.models.load_model(str(CNN_MODEL_PATH))
+    if cnn_path.exists():
+        print(f"  Loading existing checkpoint from {cnn_path} for full-scale fine-tuning...")
+        initial_model = tf.keras.models.load_model(str(cnn_path))
 
     cnn_model, history = train_cnn(
         train_ds=train_ds,
         val_ds=val_ds,
         epochs=EPOCHS,
-        model_save_path=CNN_MODEL_PATH,
+        model_save_path=cnn_path,
         class_weight=class_weights,
         initial_model=initial_model,
-        learning_rate=LEARNING_RATE
+        learning_rate=LEARNING_RATE,
+        backbone=backbone,
     )
-    print(f"  CNN full dataset training completed in {time.time() - t0:.2f}s")
+    print(f"  Backbone training completed in {time.time() - t0:.2f}s")
 
     # Step 3: Deep Feature Extraction
     print("\n[STEP 3/6] Extracting 128-dimensional latent representations...")
@@ -77,6 +94,8 @@ def main():
     print(f"  Preparing {TRAIN_SAMPLES_PER_CLASS * 3} balanced samples for SVM & RF training...")
     train_paths, train_labels = get_balanced_filepaths(TRAIN_DIR, samples_per_class=TRAIN_SAMPLES_PER_CLASS)
     train_ml_ds = create_tf_dataset(train_paths, train_labels, batch_size=512, is_training=False)
+    if is_mobilenet:
+        train_ml_ds = adapt_dataset_for_mobilenet(train_ml_ds)
 
     print("  Extracting training features...")
     X_train_feats, y_train = feature_extractor.extract_from_dataset(train_ml_ds)
@@ -84,6 +103,8 @@ def main():
 
     print("  Extracting test features across ALL 56,723 test images...")
     test_extract_ds = get_full_test_dataset(batch_size=512)
+    if is_mobilenet:
+        test_extract_ds = adapt_dataset_for_mobilenet(test_extract_ds)
     X_test_feats, y_test = feature_extractor.extract_from_dataset(test_extract_ds)
     print(f"  Test features extracted: {X_test_feats.shape}")
     print(f"  Total feature extraction time: {time.time() - t0:.2f}s")
@@ -101,7 +122,7 @@ def main():
     print(f"  Random Forest training completed in {time.time() - t0:.2f}s")
 
     # Save Models
-    save_ml_models(svm_model, rf_model, scaler, SVM_MODEL_PATH, RF_MODEL_PATH, SCALER_PATH)
+    save_ml_models(svm_model, rf_model, scaler, svm_path, rf_path, scaler_path)
 
     # Step 6: Benchmark Evaluation on ALL 56,723 Test Images
     print(f"\n[STEP 6/6] Evaluating all models on ALL {len(y_test)} unseen test images...")
@@ -121,12 +142,14 @@ def main():
     metadata = {
         "creation_timestamp": datetime.now().isoformat(),
         "classes": CLASSES,
+        "backbone": backbone,
         "dataset_scope": "Full Scale (151,649 Train / 56,723 Test)",
         "train_image_count": 151649,
         "test_sample_count": len(y_test),
         "ml_train_samples": len(y_train),
         "feature_dimension": 128,
-        "input_shape": [64, 64, 1],
+        "input_shape": list(MOBILENET_INPUT_SHAPE) if is_mobilenet else [64, 64, 1],
+        "cnn_path": str(cnn_path),
         "ensemble_weights": {"CNN": 0.35, "SVM": 0.35, "Random_Forest": 0.30},
         "results_summary": {
             m_name: {

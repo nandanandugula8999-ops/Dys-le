@@ -13,9 +13,10 @@ import joblib
 
 from src.config import (
     CNN_MODEL_PATH, SVM_MODEL_PATH, RF_MODEL_PATH, SCALER_PATH,
-    CLASSES, CLASS_RISK_MAP, IMG_HEIGHT, IMG_WIDTH
+    CLASSES, CLASS_RISK_MAP, IMG_HEIGHT, IMG_WIDTH,
+    MOBILENET_INPUT_SIZE, BACKBONE, backbone_model_paths,
 )
-from src.cnn_model import get_feature_extractor_model
+from src.cnn_model import get_feature_extractor_model, detect_backbone_from_model
 
 
 class HybridDyslexiaDetector:
@@ -29,26 +30,54 @@ class HybridDyslexiaDetector:
         cnn_path: Path = CNN_MODEL_PATH,
         svm_path: Path = SVM_MODEL_PATH,
         rf_path: Path = RF_MODEL_PATH,
-        scaler_path: Path = SCALER_PATH
+        scaler_path: Path = SCALER_PATH,
+        backbone: Optional[str] = None,
     ):
         self.cnn_path = Path(cnn_path)
         self.svm_path = Path(svm_path)
         self.rf_path = Path(rf_path)
         self.scaler_path = Path(scaler_path)
+        # Explicit override (e.g. HybridDyslexiaDetector(backbone="mobilenetv2")),
+        # otherwise auto-detected from the loaded Keras model.
+        self.backbone_override = (backbone or BACKBONE or "custom_cnn").lower() if backbone or BACKBONE else None
 
         self._load_models()
 
     def _load_models(self):
         """Load all models and preprocessors into memory."""
-        print(f"[INFO] Loading CNN from {self.cnn_path}...")
+        print(f"[INFO] Loading backbone CNN from {self.cnn_path}...")
         self.cnn_model = tf.keras.models.load_model(str(self.cnn_path))
         self.feature_extractor = get_feature_extractor_model(self.cnn_model)
+        detected = detect_backbone_from_model(self.cnn_model)
+        # Explicit backbone arg wins; otherwise trust auto-detection.
+        if getattr(self, "backbone_override", None) in ("custom_cnn", "mobilenetv2"):
+            # Only honor override when it agrees with detection OR model is custom.
+            # Auto-detection is authoritative when a MobileNetV2 file is loaded.
+            self.backbone_name = detected if detected == "mobilenetv2" else self.backbone_override
+        else:
+            self.backbone_name = detected
+        print(f"[INFO] Detected backbone: {self.backbone_name}")
 
         print(f"[INFO] Loading SVM, RF, and Scaler...")
         self.svm_model = joblib.load(str(self.svm_path))
         self.rf_model = joblib.load(str(self.rf_path))
         self.scaler = joblib.load(str(self.scaler_path))
         print("[SUCCESS] All hybrid detector components loaded.")
+
+    def _to_backbone_tensor(self, gray_tensor_01: np.ndarray) -> np.ndarray:
+        """
+        Convert normalized grayscale tensor (1,64,64,1) in [0,1] to the
+        backbone's expected input. MobileNetV2: RGB (1,96,96,3) in [0,255]
+        (model Rescaling -> [-1,1]). Custom CNN: unchanged.
+        """
+        if getattr(self, "backbone_name", "custom_cnn") != "mobilenetv2":
+            return gray_tensor_01
+        arr = gray_tensor_01.astype(np.float32).squeeze(axis=0).squeeze(axis=-1)  # (64,64) [0,1]
+        pil = Image.fromarray(np.clip(arr * 255.0, 0, 255).astype(np.uint8))
+        pil = pil.resize((MOBILENET_INPUT_SIZE, MOBILENET_INPUT_SIZE), Image.Resampling.BILINEAR)
+        rgb = np.array(pil, dtype=np.float32)  # [0,255]
+        rgb = np.stack([rgb, rgb, rgb], axis=-1)  # (S,S,3)
+        return np.expand_dims(rgb, axis=0)
 
     def preprocess_image(
         self,
@@ -87,6 +116,7 @@ class HybridDyslexiaDetector:
                     tensor = arr
                 else:
                     raise ValueError(f"Unexpected image shape: {image.shape}")
+                tensor = self._to_backbone_tensor(tensor) if tensor.shape[-1] == 1 else tensor
                 if return_details:
                     dummy_img = Image.fromarray((arr.squeeze() * 255).astype(np.uint8))
                     return tensor, {"auto_inverted": False, "centered": False, "background_detected": "preprocessed_array"}, dummy_img
@@ -141,12 +171,14 @@ class HybridDyslexiaDetector:
         resized_pil = processed_pil.resize((IMG_WIDTH, IMG_HEIGHT), Image.Resampling.BILINEAR)
         norm_arr = np.array(resized_pil, dtype=np.float32) / 255.0
         tensor = np.expand_dims(norm_arr, axis=(0, -1))
+        tensor = self._to_backbone_tensor(tensor)
 
         details = {
             "auto_inverted": was_inverted,
             "centered": was_centered,
             "background_detected": "light_paper" if was_inverted else "dark_canvas",
-            "background_luminosity": round(bg_val, 1)
+            "background_luminosity": round(bg_val, 1),
+            "backbone": getattr(self, "backbone_name", "custom_cnn"),
         }
 
         if return_details:
@@ -208,6 +240,7 @@ class HybridDyslexiaDetector:
             "prediction": ensemble_class,
             "confidence": confidence,
             "confidence_percentage": f"{confidence * 100:.1f}%",
+            "backbone": getattr(self, "backbone_name", "custom_cnn"),
             "risk_level": risk_info["level"],
             "risk_description": risk_info["description"],
             "risk_color": risk_info["color"],
@@ -217,6 +250,7 @@ class HybridDyslexiaDetector:
             "preprocessing": prep_details,
             "models": {
                 "CNN": {
+                    "backbone": getattr(self, "backbone_name", "custom_cnn"),
                     "prediction": cnn_class,
                     "confidence": float(cnn_probs[cnn_class_idx]),
                     "probabilities": {CLASSES[i]: float(cnn_probs[i]) for i in range(len(CLASSES))}
