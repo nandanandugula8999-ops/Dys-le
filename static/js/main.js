@@ -69,23 +69,219 @@ document.addEventListener("DOMContentLoaded", () => {
         || (function () { try { return localStorage.getItem("dyslexia_backend") || ""; } catch (e) { return ""; } })()
     ).replace(/\/$/, "");
     const api = (p) => `${API_BASE}${p}`;
+    function isBackendMissing(err, res) {
+        if (res && res.status === 404) return true;
+        if (!err) return false;
+        const m = String((err && err.message) || err);
+        return (/Failed to fetch|NetworkError|Load failed|HTML page instead|no \/api backend|Server error 404/i.test(m));
+    }
     async function apiJson(res) {
         const ct = res.headers.get("content-type") || "";
         if (!res.ok) {
             const txt = await res.text().catch(() => "");
-            if (!API_BASE && res.status === 404 && txt.includes("<!DOCTYPE")) {
-                throw new Error("AI backend not found on this static site. Host server_cnn_only.py (Render/Railway) and open this page with ?backend=https://your-backend, e.g. " + window.location.pathname + "?backend=https://your-backend");
-            }
             throw new Error(`Server error ${res.status}: ${txt.slice(0, 120)}`);
         }
         if (!ct.includes("application/json")) {
             const txt = await res.text().catch(() => "");
             if (txt.trim().startsWith("<!DOCTYPE") || txt.trim().startsWith("<html")) {
-                throw new Error("Got an HTML page instead of AI results. This static copy has no /api backend. Run the Flask server locally or set ?backend=https://your-backend.");
+                throw new Error("Got an HTML page instead of AI results (static host has no /api backend).");
             }
             throw new Error("Unexpected server response (not JSON).");
         }
         return res.json();
+    }
+
+    // ----------------------------------------------------------
+    // Offline fallback inference (Netlify / static hosts).
+    // Netlify cannot run Flask + TensorFlow, so /api/* returns 404.
+    // This lightweight canvas heuristic lets uploads work end-to-end
+    // as a demo; for the full 88.67% hybrid AI, host server.py
+    // elsewhere and open this page with ?backend=https://your-backend
+    // ----------------------------------------------------------
+    function fileToDataURL(file) {
+        return new Promise((resolve, reject) => {
+            const r = new FileReader();
+            r.onload = () => resolve(r.result);
+            r.onerror = reject;
+            r.readAsDataURL(file);
+        });
+    }
+    function loadImageEl(dataUrl) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = reject;
+            img.src = dataUrl;
+        });
+    }
+    function offlineAnalyzeDataUrl(dataUrl, filename) {
+        return loadImageEl(dataUrl).then((img) => {
+            const S = 64;
+            const cv = document.createElement("canvas");
+            cv.width = S; cv.height = S;
+            const ctx = cv.getContext("2d", { willReadFrequently: true });
+            ctx.fillStyle = "#000"; ctx.fillRect(0, 0, S, S);
+            const scale = Math.min(S / img.width, S / img.height);
+            const w = Math.max(1, Math.round(img.width * scale * 0.85));
+            const h = Math.max(1, Math.round(img.height * scale * 0.85));
+            ctx.drawImage(img, (S - w) / 2, (S - h) / 2, w, h);
+            const d = ctx.getImageData(0, 0, S, S).data;
+            const gray = new Float32Array(S * S);
+            for (let i = 0; i < S * S; i++) {
+                gray[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
+            }
+            // Background from border median; invert light backgrounds like server.py
+            const border = [];
+            for (let x = 0; x < S; x++) { border.push(gray[x]); border.push(gray[(S - 1) * S + x]); }
+            for (let y = 0; y < S; y++) { border.push(gray[y * S]); border.push(gray[y * S + S - 1]); }
+            border.sort((a, b) => a - b);
+            const bg = border[Math.floor(border.length / 2)];
+            const ink = new Float32Array(S * S);
+            for (let i = 0; i < S * S; i++) {
+                ink[i] = bg > 110 ? Math.max(0, bg - gray[i]) : gray[i];
+            }
+            let sum = 0, left = 0, right = 0, top = 0, bottom = 0;
+            for (let y = 0; y < S; y++) {
+                for (let x = 0; x < S; x++) {
+                    const v = ink[y * S + x]; sum += v;
+                    if (x < S / 2) left += v; else right += v;
+                    if (y < S / 2) top += v; else bottom += v;
+                }
+            }
+            if (sum < 1e-6) {
+                return offlineBuildResult(filename, dataUrl, { Reversal: 0.33, Corrected: 0.33, Normal: 0.34 }, "Normal");
+            }
+            const hAsym = Math.abs(left - right) / sum;
+            const vAsym = Math.abs(top - bottom) / sum;
+            // Mirror difference: image vs horizontally flipped
+            let flipDiff = 0;
+            for (let y = 0; y < S; y++) {
+                for (let x = 0; x < S / 2; x++) {
+                    flipDiff += Math.abs(ink[y * S + x] - ink[y * S + (S - 1 - x)]);
+                }
+            }
+            flipDiff /= (sum + 1e-6);
+            const mean = sum / (S * S);
+            let variance = 0;
+            for (let i = 0; i < S * S; i++) variance += (ink[i] - mean) * (ink[i] - mean);
+            variance = variance / (S * S) / (255 * 255);
+            const inkRatio = mean / 255;
+            // Heuristic scores (tuned to separate b/d-like asymmetry vs scribble vs clean)
+            const reversalScore = Math.min(1.6, hAsym * 3.0 + flipDiff * 0.9 + vAsym * 0.4);
+            const correctedScore = Math.min(1.6, variance * 9.0 + Math.min(0.6, inkRatio * 2.2));
+            const normalScore = 0.85;
+            const ex = (v) => Math.exp(v * 2.2);
+            const eR = ex(reversalScore), eC = ex(correctedScore), eN = ex(normalScore);
+            const tot = eR + eC + eN;
+            const probs = { Reversal: eR / tot, Corrected: eC / tot, Normal: eN / tot };
+            let top1 = "Normal";
+            if (probs.Reversal >= probs.Corrected && probs.Reversal >= probs.Normal) top1 = "Reversal";
+            else if (probs.Corrected >= probs.Normal) top1 = "Corrected";
+            return offlineBuildResult(filename, dataUrl, probs, top1);
+        });
+    }
+    function offlineBuildResult(filename, thumb, probs, pred) {
+        const conf = probs[pred];
+        const risk = pred === "Reversal"
+            ? { level: "High Risk (Dyslexia Indicator)", desc: "Offline demo estimate: strong stroke asymmetry consistent with mirror-reversal patterns. Host the Flask backend (?backend=URL) for the full 88.67% hybrid AI verdict." }
+            : pred === "Corrected"
+                ? { level: "Moderate Risk", desc: "Offline demo estimate: high stroke variance / overwriting texture. Host the Flask backend (?backend=URL) for the full hybrid AI verdict." }
+                : { level: "Low Risk", desc: "Offline demo estimate: balanced strokes, no strong reversal signal. Host the Flask backend (?backend=URL) for the full hybrid AI verdict." };
+        const pct = (v) => `${(v * 100).toFixed(1)}%`;
+        const jit = (v, d) => Math.max(0.01, Math.min(0.99, v + d));
+        const mk = (delta) => {
+            const p = { Reversal: jit(probs.Reversal, delta), Corrected: jit(probs.Corrected, -delta / 2), Normal: jit(probs.Normal, -delta / 2) };
+            const s = p.Reversal + p.Corrected + p.Normal;
+            p.Reversal /= s; p.Corrected /= s; p.Normal /= s;
+            let t = "Normal";
+            if (p.Reversal >= p.Corrected && p.Reversal >= p.Normal) t = "Reversal";
+            else if (p.Corrected >= p.Normal) t = "Corrected";
+            return { prediction: t, confidence: p[t], probabilities: p };
+        };
+        const cnn = mk(0.02), svm = mk(-0.015), rf = mk(0.0);
+        return {
+            filename: filename || "upload.png",
+            prediction: pred, confidence: conf, confidence_percentage: pct(conf),
+            risk_level: risk.level, risk_description: risk.desc, risk_color: pred === "Reversal" ? "#dc3545" : pred === "Corrected" ? "#ffc107" : "#28a745",
+            unanimous_agreement: cnn.prediction === svm.prediction && svm.prediction === rf.prediction,
+            vote_distribution: { Corrected: 0, Normal: 0, Reversal: 0 },
+            ensemble_probabilities: probs,
+            models: {
+                CNN: { prediction: cnn.prediction, confidence: cnn.confidence, probabilities: cnn.probabilities },
+                SVM: { prediction: svm.prediction, confidence: svm.confidence, probabilities: svm.probabilities },
+                Random_Forest: { prediction: rf.prediction, confidence: rf.confidence, probabilities: rf.probabilities }
+            },
+            thumbnail_base64: thumb, processed_thumbnail_base64: thumb,
+            offline_demo: true, mode: "offline_demo"
+        };
+    }
+    async function offlineBatch(files) {
+        const inds = [];
+        const sum = { Reversal: 0, Corrected: 0, Normal: 0 };
+        for (const f of files) {
+            const url = await fileToDataURL(f);
+            const one = await offlineAnalyzeDataUrl(url, f.name);
+            inds.push(one);
+            sum.Reversal += one.ensemble_probabilities.Reversal;
+            sum.Corrected += one.ensemble_probabilities.Corrected;
+            sum.Normal += one.ensemble_probabilities.Normal;
+        }
+        return offlineAggregate(inds, sum);
+    }
+    function offlineAggregate(inds, sum) {
+        const n = inds.length;
+        const avg = { Reversal: sum.Reversal / n, Corrected: sum.Corrected / n, Normal: sum.Normal / n };
+        let overall = "Normal";
+        if (avg.Reversal >= avg.Corrected && avg.Reversal >= avg.Normal) overall = "Reversal";
+        else if (avg.Corrected >= avg.Normal) overall = "Corrected";
+        const counts = { Corrected: 0, Normal: 0, Reversal: 0 };
+        inds.forEach((r) => { counts[r.prediction] = (counts[r.prediction] || 0) + 1; });
+        const revRate = counts.Reversal / n * 100, corrRate = counts.Corrected / n * 100, normRate = counts.Normal / n * 100;
+        const level = (revRate >= 20 || overall === "Reversal") ? "High Risk (Dyslexia Indicator)"
+            : (corrRate >= 30 || overall === "Corrected") ? "Moderate Risk" : "Low Risk";
+        return {
+            total_images: n, overall_prediction: overall,
+            overall_confidence: avg[overall], overall_confidence_percentage: `${(avg[overall] * 100).toFixed(1)}%`,
+            average_probabilities: avg, class_counts: counts,
+            reversal_count: counts.Reversal, reversal_rate: revRate,
+            corrected_count: counts.Corrected, corrected_rate: corrRate,
+            normal_count: counts.Normal, normal_rate: normRate,
+            overall_risk_level: level + " — offline demo",
+            overall_risk_description: inds[0] ? inds[0].risk_description : "Offline demo result.",
+            overall_risk_color: overall === "Reversal" ? "#dc3545" : overall === "Corrected" ? "#ffc107" : "#28a745",
+            individual_results: inds,
+            model_averages: { CNN: avg, SVM: avg, Random_Forest: avg },
+            mode: "offline_demo"
+        };
+    }
+    function offlineDemoBatch(type) {
+        const presets = {
+            normal: { Reversal: 0.12, Corrected: 0.18, Normal: 0.70 },
+            reversal: { Reversal: 0.72, Corrected: 0.16, Normal: 0.12 },
+            corrected: { Reversal: 0.15, Corrected: 0.68, Normal: 0.17 }
+        };
+        const pick = presets[type] || presets.normal;
+        const mkThumb = (label, i) => {
+            const c = document.createElement("canvas"); c.width = 100; c.height = 100;
+            const g = c.getContext("2d");
+            g.fillStyle = "#111"; g.fillRect(0, 0, 100, 100);
+            g.strokeStyle = "#fff"; g.lineWidth = 5; g.font = "bold 56px serif";
+            g.fillStyle = "#fff"; g.textAlign = "center"; g.textBaseline = "middle";
+            g.fillText(label === "Reversal" ? "b" : label === "Corrected" ? "A" : "A", 50, 55);
+            return c.toDataURL();
+        };
+        const count = type === "suite" ? 6 : 2;
+        const labels = type === "suite"
+            ? ["Normal", "Normal", "Reversal", "Reversal", "Corrected", "Corrected"]
+            : [(type === "reversal" ? "Reversal" : type === "corrected" ? "Corrected" : "Normal"),
+               (type === "reversal" ? "Reversal" : type === "corrected" ? "Corrected" : "Normal")];
+        const inds = labels.slice(0, count).map((lab, i) => {
+            const p = lab === "Normal" ? presets.normal : lab === "Reversal" ? presets.reversal : presets.corrected;
+            return offlineBuildResult(`${lab}_demo_${i + 1}.png`, mkThumb(lab, i), p, lab);
+        });
+        const sum = { Reversal: 0, Corrected: 0, Normal: 0 };
+        inds.forEach((r) => { sum.Reversal += r.ensemble_probabilities.Reversal; sum.Corrected += r.ensemble_probabilities.Corrected; sum.Normal += r.ensemble_probabilities.Normal; });
+        return offlineAggregate(inds, sum);
     }
 
     // Color definitions
@@ -180,9 +376,20 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (data.error) {
                     throw new Error(data.error);
                 }
-                renderResults(data);
+                renderResults(data, false);
             } catch (err) {
-                alert("Error loading demo sample: " + err.message);
+                if (isBackendMissing(err)) {
+                    try {
+                        triggerLoading(true, "Backend not found on this static host — running offline demo analysis...");
+                        const data = offlineDemoBatch(demoType);
+                        renderResults(data, true);
+                        return;
+                    } catch (e2) {
+                        alert("Offline demo also failed: " + e2.message);
+                    }
+                } else {
+                    alert("Error loading demo sample: " + err.message);
+                }
                 triggerLoading(false);
             }
         });
@@ -210,9 +417,20 @@ document.addEventListener("DOMContentLoaded", () => {
                 throw new Error(data.error);
             }
 
-            renderResults(data);
+            renderResults(data, false);
         } catch (err) {
-            alert("Analysis failed: " + err.message);
+            if (isBackendMissing(err)) {
+                try {
+                    triggerLoading(true, `Backend 404 on static host — analyzing ${selectedFiles.length} image(s) in browser (offline demo)...`);
+                    const data = await offlineBatch(selectedFiles);
+                    renderResults(data, true);
+                    return;
+                } catch (e2) {
+                    alert("Offline analysis failed: " + e2.message);
+                }
+            } else {
+                alert("Analysis failed: " + err.message);
+            }
             triggerLoading(false);
         }
     });
@@ -234,13 +452,17 @@ document.addEventListener("DOMContentLoaded", () => {
     // ==========================================
     // Dynamic Results Rendering
     // ==========================================
-    function renderResults(res) {
+    function renderResults(res, isOffline = false) {
         currentResult = res;
         triggerLoading(false);
 
         emptyState.style.display = "none";
         resultsContent.style.display = "block";
-        resultsBadge.textContent = "Analysis Complete";
+        const offline = isOffline || res.mode === "offline_demo";
+        resultsBadge.textContent = offline ? "Demo Complete (offline)" : "Analysis Complete";
+        resultsBadge.title = offline
+            ? "Static host has no Python backend, so this result is a browser demo approximation. Add ?backend=https://your-flask-server for full hybrid AI."
+            : "Full backend result";
 
         const isMulti = res.total_images > 1;
         const predClass = res.overall_prediction;
@@ -328,7 +550,9 @@ document.addEventListener("DOMContentLoaded", () => {
             const gradcamSection = document.getElementById("gradcamSection");
             const gradcamImg = document.getElementById("gradcamImg");
             const gradcamCaption = document.getElementById("gradcamCaption");
-            if (gradcamSection && selectedFiles.length === 1) {
+            if (offline && gradcamSection) {
+                gradcamSection.style.display = "none";
+            } else if (gradcamSection && selectedFiles.length === 1) {
                 gradcamSection.style.display = "block";
                 if (gradcamImg) gradcamImg.style.opacity = "0.4";
                 if (gradcamCaption) gradcamCaption.textContent = "Computing Grad-CAM...";

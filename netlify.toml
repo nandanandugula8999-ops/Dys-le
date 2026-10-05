@@ -1,7 +1,16 @@
 # Netlify hosts static files only — it cannot run server.py (Flask + TensorFlow).
-# This builds a static preview: templates/index.html + static/ → public/
-# Your AI backend (/api/predict, /api/demo, /api/gradcam) must be hosted
-# separately (Render / Railway / Hugging Face Spaces running server_cnn_only.py).
+# Frontend now includes an offline browser demo fallback, so uploads work on
+# Netlify without a backend. For full 88.67% hybrid AI, host server.py or
+# server_cnn_only.py separately (Render / Railway / HF Spaces) and open the
+# site with ?backend=https://your-backend (saved to localStorage).
 [build]
-  command = "mkdir -p public && cp templates/index.html public/index.html && cp -r static public/static"
+  command = "mkdir -p public && cp templates/index.html public/index.html && rm -rf public/static && cp -r static public/static && cp api-missing.json public/api-missing.json"
   publish = "public"
+
+# Return JSON (not Netlify's HTML 404 page) for missed /api/* calls so the
+# frontend can reliably detect offline mode.
+[[redirects]]
+  from = "/api/*"
+  to = "/api-missing.json"
+  status = 404
+  force = true

@@ -1,0 +1,1 @@
+{"error": "Static host has no Python backend. The site is running in offline demo mode (browser-side heuristic). For full hybrid AI, host server.py elsewhere and open this page with ?backend=https://your-backend."}
