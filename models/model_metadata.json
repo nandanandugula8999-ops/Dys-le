@@ -1,10 +1,11 @@
 {
-    "creation_timestamp": "2026-09-28T16:09:13.007856",
+    "creation_timestamp": "2026-10-06T15:06:34.385843",
     "classes": [
         "Corrected",
         "Normal",
         "Reversal"
     ],
+    "backbone": "custom_cnn",
     "dataset_scope": "Full Scale (151,649 Train / 56,723 Test)",
     "train_image_count": 151649,
     "test_sample_count": 56723,
@@ -15,6 +16,7 @@
         64,
         1
     ],
+    "cnn_path": "C:\\Users\\Nandan\\Dys-le\\models\\cnn_feature_extractor.keras",
     "ensemble_weights": {
         "CNN": 0.35,
         "SVM": 0.35,
@@ -22,20 +24,20 @@
     },
     "results_summary": {
         "Standalone CNN": {
-            "accuracy": 85.03,
-            "macro_f1": 85.07
+            "accuracy": 86.84,
+            "macro_f1": 86.92
         },
         "CNN + SVM (RBF)": {
-            "accuracy": 88.22,
-            "macro_f1": 88.3
+            "accuracy": 89.02,
+            "macro_f1": 89.1
         },
         "CNN + Random Forest": {
-            "accuracy": 88.52,
-            "macro_f1": 88.63
+            "accuracy": 89.39,
+            "macro_f1": 89.49
         },
         "Hybrid Ensemble (Consensus)": {
-            "accuracy": 88.67,
-            "macro_f1": 88.76
+            "accuracy": 89.3,
+            "macro_f1": 89.39
         }
     }
 }

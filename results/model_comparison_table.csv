@@ -1,5 +1,5 @@
 Model,Accuracy,Macro Precision,Macro Recall,Macro F1,Weighted F1
-Standalone CNN,85.03,85.2,85.23,85.07,84.99
-CNN + SVM (RBF),88.22,88.4,88.24,88.3,88.23
-CNN + Random Forest,88.52,88.74,88.55,88.63,88.56
-Hybrid Ensemble (Consensus),88.67,88.79,88.73,88.76,88.69
+Standalone CNN,86.84,87.06,86.96,86.92,86.85
+CNN + SVM (RBF),89.02,89.15,89.06,89.1,89.02
+CNN + Random Forest,89.39,89.6,89.42,89.49,89.43
+Hybrid Ensemble (Consensus),89.3,89.45,89.36,89.39,89.33

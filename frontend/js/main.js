@@ -95,7 +95,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // Offline fallback inference (Netlify / static hosts).
     // Netlify cannot run Flask + TensorFlow, so /api/* returns 404.
     // This lightweight canvas heuristic lets uploads work end-to-end
-    // as a demo; for the full 88.67% hybrid AI, host server.py
+    // as a demo; for the full 89.30% hybrid AI, host server.py
     // elsewhere and open this page with ?backend=https://your-backend
     // ----------------------------------------------------------
     function fileToDataURL(file) {
@@ -183,7 +183,7 @@ document.addEventListener("DOMContentLoaded", () => {
     function offlineBuildResult(filename, thumb, probs, pred) {
         const conf = probs[pred];
         const risk = pred === "Reversal"
-            ? { level: "High Risk (Dyslexia Indicator)", desc: "Offline demo estimate: strong stroke asymmetry consistent with mirror-reversal patterns. Host the Flask backend (?backend=URL) for the full 88.67% hybrid AI verdict." }
+            ? { level: "High Risk (Dyslexia Indicator)", desc: "Offline demo estimate: strong stroke asymmetry consistent with mirror-reversal patterns. Host the Flask backend (?backend=URL) for the full 89.30% hybrid AI verdict." }
             : pred === "Corrected"
                 ? { level: "Moderate Risk", desc: "Offline demo estimate: high stroke variance / overwriting texture. Host the Flask backend (?backend=URL) for the full hybrid AI verdict." }
                 : { level: "Low Risk", desc: "Offline demo estimate: balanced strokes, no strong reversal signal. Host the Flask backend (?backend=URL) for the full hybrid AI verdict." };
